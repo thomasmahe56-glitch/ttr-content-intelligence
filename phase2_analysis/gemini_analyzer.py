@@ -59,34 +59,37 @@ def analyze_reel(local_path: str, caption_originale: Optional[str] = None) -> di
 
     video_file = upload_video(local_path)
 
-    prompt = ANALYSIS_PROMPT
-    if caption_originale:
-        prompt = _CAPTION_PREFIX.format(caption=caption_originale) + ANALYSIS_PROMPT
-
-    model = genai.GenerativeModel("gemini-2.5-flash")
-    response = model.generate_content(
-        [video_file, prompt],
-        generation_config=genai.types.GenerationConfig(
-            temperature=0.2,
-            response_mime_type="application/json",
-        ),
-    )
-
-    # Nettoyage Gemini : supprime les Markdown code fences si présents
-    raw = response.text.strip().removeprefix("```json").removesuffix("```").strip()
-
     try:
-        analysis = json.loads(raw)
-    except json.JSONDecodeError:
-        log_error(f"JSON invalide de Gemini, retour brut conservé")
-        analysis = {"raw_response": raw}
+        prompt = ANALYSIS_PROMPT
+        if caption_originale:
+            prompt = _CAPTION_PREFIX.format(caption=caption_originale) + ANALYSIS_PROMPT
 
-    # On attache la caption originale à l'analyse pour qu'elle circule dans le pipeline
-    if caption_originale:
-        analysis["caption_originale"] = caption_originale
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        response = model.generate_content(
+            [video_file, prompt],
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.2,
+                response_mime_type="application/json",
+            ),
+        )
 
-    # Nettoyage du fichier uploadé pour économiser le quota
-    genai.delete_file(video_file.name)
+        raw = response.text.strip().removeprefix("```json").removesuffix("```").strip()
 
-    log_success(f"Analyse Gemini terminée pour {Path(local_path).name}")
-    return analysis
+        try:
+            analysis = json.loads(raw)
+        except json.JSONDecodeError:
+            log_error("JSON invalide de Gemini, retour brut conservé")
+            analysis = {"raw_response": raw}
+
+        if caption_originale:
+            analysis["caption_originale"] = caption_originale
+
+        log_success(f"Analyse Gemini terminée pour {Path(local_path).name}")
+        return analysis
+
+    finally:
+        # Toujours supprimer le fichier uploadé pour ne pas consumer le quota fichiers
+        try:
+            genai.delete_file(video_file.name)
+        except Exception:
+            pass

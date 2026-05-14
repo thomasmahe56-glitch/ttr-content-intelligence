@@ -19,6 +19,26 @@ from phase1_scraping.apify_scraper import scrape_account_reels
 from phase2_analysis.gemini_analyzer import analyze_reel
 from utils.logger import log_error, log_info, log_success
 
+_GEMINI_RETRY_WAITS = [60, 120, 240]  # secondes entre les tentatives sur 429
+
+
+async def _analyze_with_retry(local_path: str, caption: str) -> Optional[dict]:
+    """Appelle analyze_reel() avec retry exponentiel sur quota Gemini (429/503)."""
+    for attempt, wait in enumerate(_GEMINI_RETRY_WAITS + [None]):
+        try:
+            return analyze_reel(local_path, caption)
+        except Exception as e:
+            msg = str(e)
+            is_quota = "429" in msg or "quota" in msg.lower() or "ResourceExhausted" in msg
+            is_unavail = "503" in msg or "unavailable" in msg.lower()
+            if (is_quota or is_unavail) and wait is not None:
+                retry_wait = wait if is_quota else 30
+                log_info(f"Gemini {'429 quota' if is_quota else '503'} — retry dans {retry_wait}s (tentative {attempt + 1}/3)...")
+                await asyncio.sleep(retry_wait)
+            else:
+                raise
+    return None
+
 TTR_ACCOUNT = "traintorehab"
 PERF_DB_TITLE = "📊 Performance TTR"
 _PARENT_PAGE_ID = "3608275241468052b02eede76e3ee6ff"
@@ -530,7 +550,13 @@ async def sync_ttr_stats_via_apify() -> dict:
                 continue
 
             log_info(f"[{i}/{total}] Analyse Gemini : {url}")
-            gemini = analyze_reel(local_path, reel.get("caption", ""))
+            gemini = await _analyze_with_retry(local_path, reel.get("caption", "") or "")
+
+            if gemini is None:
+                log_error(f"[{i}/{total}] Quota Gemini épuisé après 3 tentatives — Reel skippé")
+                analysis_errors += 1
+                enriched_reels.append(reel)
+                continue
 
             if page:
                 _update_notion_gemini(page["id"], gemini)
