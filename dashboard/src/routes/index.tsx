@@ -100,7 +100,10 @@ function Index() {
   const [d100Tab, setD100Tab] = useState<D100Tab>("views");
   const [syncingMyStats, setSyncingMyStats] = useState(false);
   const [myStatsResult, setMyStatsResult] = useState<{
-    created: number; skipped: number; apify_reels: number; pattern_insight: string;
+    apify_reels: number; created: number;
+    analyzed: number; skipped_analyzed: number;
+    dl_errors: number; analysis_errors: number;
+    pattern_insight: string;
   } | null>(null);
   const d100EsRef = useRef<EventSource | null>(null);
 
@@ -284,7 +287,7 @@ function Index() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setMyStatsResult(data);
-      toast.success(`${data.created} page${data.created > 1 ? "s" : ""} créée${data.created > 1 ? "s" : ""} dans Notion`);
+      toast.success(`${data.analyzed} Reels analysés par Gemini · ${data.created} nouvelles pages Notion`);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erreur sync Apify @traintorehab");
     } finally {
@@ -352,9 +355,15 @@ function Index() {
           {myStatsResult && (
             <div className="rounded-xl border border-border bg-card px-4 py-3 text-sm animate-fade-in">
               <span className="text-muted-foreground">
-                {myStatsResult.created} page{myStatsResult.created > 1 ? "s" : ""} créée{myStatsResult.created > 1 ? "s" : ""}
-                {myStatsResult.skipped > 0 && ` · ${myStatsResult.skipped} déjà sync`}
-                {` · ${myStatsResult.apify_reels} Reels Apify`}
+                {myStatsResult.apify_reels} Reels
+                {myStatsResult.analyzed > 0 && ` · ${myStatsResult.analyzed} analysés Gemini`}
+                {myStatsResult.skipped_analyzed > 0 && ` · ${myStatsResult.skipped_analyzed} déjà analysés`}
+                {myStatsResult.created > 0 && ` · ${myStatsResult.created} nouvelles pages`}
+                {(myStatsResult.dl_errors + myStatsResult.analysis_errors) > 0 && (
+                  <span className="text-destructive">
+                    {` · ${myStatsResult.dl_errors + myStatsResult.analysis_errors} erreurs`}
+                  </span>
+                )}
               </span>
               {myStatsResult.pattern_insight && (
                 <>
