@@ -17,7 +17,7 @@ from utils.logger import log_error, log_info, log_success
 TTR_ACCOUNT = "traintorehab"
 PERF_DB_TITLE = "📊 Performance TTR"
 # Page parent : même espace que "Contenu TTR — Analyse Reels"
-_PARENT_PAGE_ID = "35482752414680e286eaf0a609aa22fc"
+_PARENT_PAGE_ID = "3608275241468052b02eede76e3ee6ff"
 
 _DIR = os.path.dirname(__file__)
 _PATTERNS_FILE = os.path.abspath(os.path.join(_DIR, "..", "performance_patterns.json"))
@@ -165,6 +165,36 @@ def _create_reel_page(db_id: str, reel: dict) -> None:
 
 # ── Claude pattern analysis ────────────────────────────────────────────────
 
+def _fix_json_newlines(raw: str) -> str:
+    """Replace literal newlines/carriage-returns inside JSON string values."""
+    result = []
+    in_string = False
+    i = 0
+    while i < len(raw):
+        c = raw[i]
+        if c == "\\" and i + 1 < len(raw):
+            result.append(c)
+            result.append(raw[i + 1])
+            i += 2
+            continue
+        if c == '"':
+            in_string = not in_string
+        elif in_string and c in ("\n", "\r"):
+            result.append(" ")
+            i += 1
+            continue
+        result.append(c)
+        i += 1
+    return "".join(result)
+
+
+def _safe(s: str, max_len: int = 80) -> str:
+    """Strip characters that break JSON generation (quotes, backslashes, newlines)."""
+    if not s:
+        return ""
+    return s.replace('"', "'").replace("\\", "").replace("\n", " ").replace("\r", "")[:max_len]
+
+
 def _analyze_with_claude(reels: list) -> str:
     """
     Sends reels data to Claude for pattern extraction.
@@ -173,8 +203,8 @@ def _analyze_with_claude(reels: list) -> str:
     """
     summary = [
         {
-            "titre": (r.get("caption", "") or "")[:80],
-            "hook": _extract_hook(r.get("caption", "") or ""),
+            "titre": _safe(r.get("caption", "") or ""),
+            "hook": _safe(_extract_hook(r.get("caption", "") or "")),
             "vues": r.get("views", 0),
             "likes": r.get("likes", 0),
             "commentaires": r.get("comments", 0),
@@ -184,50 +214,53 @@ def _analyze_with_claude(reels: list) -> str:
         for r in reels
     ]
 
-    prompt = f"""Tu analyses les performances des Reels Instagram de @traintorehab \
-(kiné-coach running, niche douleur/course à pied).
+    n = len(summary)
+    avg_views = sum(r["vues"] for r in summary) // n if n else 0
+    avg_likes = sum(r["likes"] for r in summary) // n if n else 0
+    avg_comments = sum(r["commentaires"] for r in summary) // n if n else 0
+    top5 = sorted(summary, key=lambda r: r["vues"], reverse=True)[:5]
 
-Voici les {len(summary)} derniers Reels avec leurs stats :
-
-{json.dumps(summary, ensure_ascii=False, indent=2)}
-
-Analyse ces données et identifie :
-1. Les types de hooks qui génèrent le plus de vues
-2. Les sujets/thèmes les plus performants
-3. La formule gagnante (hook + sujet + format)
-4. Les insights actionnables pour les prochains scripts
-
-Retourne uniquement ce JSON valide :
-
-{{
-  "generated_at": "{date.today().isoformat()}",
-  "total_reels": {len(summary)},
-  "avg_views": <moyenne_vues_entier>,
-  "avg_likes": <moyenne_likes_entier>,
-  "avg_comments": <moyenne_commentaires_entier>,
-  "top_performers": [
-    {{"titre": "...", "vues": N, "hook": "...", "url": "..."}}
-  ],
-  "patterns": {{
-    "hooks_gagnants": ["type hook 1", "type hook 2", "type hook 3"],
-    "sujets_performants": ["sujet 1", "sujet 2", "sujet 3"],
-    "formule_gagnante": "1 phrase décrivant la combinaison hook+sujet+format gagnante"
-  }},
-  "insights": ["insight actionnable 1", "insight actionnable 2", "insight actionnable 3"],
-  "pattern_court": "1 phrase résumé pour le dashboard (ex: Hook question + sujets douleur dominent)"
-}}"""
+    schema = (
+        '{"generated_at":"' + date.today().isoformat() + '",'
+        '"total_reels":' + str(n) + ','
+        '"avg_views":' + str(avg_views) + ','
+        '"avg_likes":' + str(avg_likes) + ','
+        '"avg_comments":' + str(avg_comments) + ','
+        '"top_performers":[{"titre":"...","vues":0,"hook":"...","url":"..."}],'
+        '"patterns":{"hooks_gagnants":["...","..."],"sujets_performants":["...","..."],"formule_gagnante":"..."},'
+        '"insights":["...","...","..."],'
+        '"pattern_court":"..."}'
+    )
+    prompt = (
+        f"Tu analyses les performances des Reels Instagram de @traintorehab "
+        f"(kiné-coach running, niche douleur/course à pied).\n\n"
+        f"Voici les {n} derniers Reels avec leurs stats :\n"
+        f"{json.dumps(summary, ensure_ascii=False)}\n\n"
+        f"Top 5 par vues : {json.dumps(top5, ensure_ascii=False)}\n\n"
+        f"Retourne UNIQUEMENT ce JSON valide (une seule ligne, pas de saut de ligne "
+        f"dans les valeurs string, pas de markdown) :\n{schema}"
+    )
 
     resp = _claude.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=1500,
         messages=[{"role": "user", "content": prompt}],
     )
-    raw = resp.content[0].text.strip().removeprefix("```json").removesuffix("```").strip()
+    raw = resp.content[0].text.strip()
 
+    # Extraction robuste : prend ce qui est entre le premier { et le dernier }
+    start = raw.find("{")
+    end = raw.rfind("}") + 1
+    if start == -1 or end == 0:
+        log_error("Claude n'a pas retourné de JSON pour les patterns")
+        return ""
+    raw = raw[start:end]
+
+    raw = _fix_json_newlines(raw)
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError:
-        log_error("Claude n'a pas retourné un JSON valide pour les patterns")
+    except json.JSONDecodeError as e:
+        log_error(f"JSON patterns invalide : {e}")
         return ""
 
     with open(_PATTERNS_FILE, "w", encoding="utf-8") as f:
