@@ -19,5 +19,9 @@ dashboard/node_modules/
 dashboard/.wrangler/
 dashboard/dist/
 
+# Generated data
+performance_patterns.json
+stats/.perf_db_id
+
 # macOS
 .DS_Store

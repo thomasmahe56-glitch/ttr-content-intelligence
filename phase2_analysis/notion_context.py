@@ -3,14 +3,21 @@ Récupère le contexte de style de Thomas depuis Notion :
 - 10 derniers transcripts podcast (base Transcript Podcast)
 - Contenu des 7 modules de formation (Du coureur blessé au coureur sans douleur)
 - Sujets traités dans les 30 derniers jours (base Contenu TTR)
+- Patterns de performance depuis performance_patterns.json (généré par sync-my-stats)
 
 Utilisé pour enrichir le prompt Claude avec le vocabulaire, les thèmes réels de Thomas,
 et éviter la répétition de sujets récents.
 """
+import json
+import os
 from datetime import datetime, timezone, timedelta
 from notion_client import Client
 from config import NOTION_API_KEY, NOTION_TRANSCRIPT_DB_ID, NOTION_FORMATION_PAGE_ID, NOTION_DATABASE_ID
 from utils.logger import log_info, log_success, log_error
+
+_PATTERNS_FILE = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "performance_patterns.json")
+)
 
 _notion = Client(auth=NOTION_API_KEY)
 
@@ -132,11 +139,82 @@ def _block_text(block: dict) -> str:
 
 def fetch_performance_patterns() -> str:
     """
-    Interroge les pages Notion qui ont des stats IG synchronisées,
-    calcule les moyennes et top performers, et retourne un bloc
-    texte prêt à injecter dans le prompt Claude.
-    Retourne '' si aucune donnée disponible.
+    Lit performance_patterns.json (généré par sync-my-stats + Claude).
+    Si absent, requête Notion comme fallback.
+    Retourne un bloc texte prêt à injecter dans le prompt Claude.
     """
+    # ── Source primaire : performance_patterns.json ──────────────────────
+    if os.path.exists(_PATTERNS_FILE):
+        try:
+            with open(_PATTERNS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if data:
+                return _format_patterns_from_json(data)
+        except Exception as e:
+            log_error(f"Lecture performance_patterns.json : {e}")
+
+    # ── Fallback : requête Notion ─────────────────────────────────────────
+    log_info("performance_patterns.json absent — fallback Notion")
+    return _fetch_patterns_from_notion()
+
+
+def _format_patterns_from_json(data: dict) -> str:
+    """Formate les patterns JSON en bloc texte pour Claude."""
+    n = data.get("total_reels", 0)
+    avg_views = data.get("avg_views", 0)
+    avg_likes = data.get("avg_likes", 0)
+    generated = data.get("generated_at", "")
+
+    lines = [
+        f"**{n} Reels @traintorehab analysés** (données du {generated}) :",
+        f"Moyenne : {avg_views:,} vues · {avg_likes:,} likes",
+        "",
+    ]
+
+    top = data.get("top_performers", [])
+    if top:
+        lines.append("**Top performers :**")
+        for i, p in enumerate(top[:5], 1):
+            line = f"{i}. {p.get('titre', '')[:50]} — {p.get('vues', 0):,} vues"
+            if p.get("hook"):
+                line += f"\n   Hook : « {p['hook'][:80]} »"
+            lines.append(line)
+        lines.append("")
+
+    patterns = data.get("patterns", {})
+    if patterns.get("hooks_gagnants"):
+        lines.append("**Hooks qui génèrent le plus de vues :**")
+        lines += [f"- {h}" for h in patterns["hooks_gagnants"][:5]]
+        lines.append("")
+
+    if patterns.get("sujets_performants"):
+        lines.append("**Sujets/thèmes les plus performants :**")
+        lines += [f"- {s}" for s in patterns["sujets_performants"][:5]]
+        lines.append("")
+
+    if patterns.get("formule_gagnante"):
+        lines.append(f"**Formule gagnante :** {patterns['formule_gagnante']}")
+        lines.append("")
+
+    insights = data.get("insights", [])
+    if insights:
+        lines.append("**Insights actionnables :**")
+        lines += [f"- {ins}" for ins in insights[:3]]
+        lines.append("")
+
+    lines += [
+        "**À appliquer au script suivant :**",
+        "Identifie quels types de hooks, sujets et formats génèrent le plus de vues.",
+        "Applique ces patterns gagnants. Privilégie les hooks courts et percutants,",
+        "les sujets douleur/reprise/prévention qui dominent ce classement.",
+    ]
+
+    log_success(f"Patterns chargés depuis performance_patterns.json ({n} reels)")
+    return "\n".join(lines)
+
+
+def _fetch_patterns_from_notion() -> str:
+    """Fallback : interroge la base Contenu TTR pour les stats IG."""
     try:
         resp = _notion.databases.query(
             database_id=NOTION_DATABASE_ID,
@@ -145,7 +223,7 @@ def fetch_performance_patterns() -> str:
             page_size=50,
         )
     except Exception as e:
-        log_error(f"Performance patterns : {e}")
+        log_error(f"Performance patterns Notion : {e}")
         return ""
 
     pages = resp.get("results", [])
@@ -158,19 +236,11 @@ def fetch_performance_patterns() -> str:
         views = (props.get("Vues IG") or {}).get("number") or 0
         saves = (props.get("Saves IG") or {}).get("number") or 0
         likes = (props.get("Likes IG") or {}).get("number") or 0
-        comments = (props.get("Commentaires IG") or {}).get("number") or 0
-        title = _title_of(page)
         hook_rts = (props.get("Hook analysé") or {}).get("rich_text", [])
         hook = "".join(rt.get("plain_text", "") for rt in hook_rts)[:100]
         if views > 0:
-            performers.append({
-                "title": title,
-                "views": views,
-                "saves": saves,
-                "likes": likes,
-                "comments": comments,
-                "hook": hook,
-            })
+            performers.append({"title": _title_of(page), "views": views,
+                                "saves": saves, "likes": likes, "hook": hook})
 
     if not performers:
         return ""
@@ -178,39 +248,26 @@ def fetch_performance_patterns() -> str:
     n = len(performers)
     avg_views = sum(p["views"] for p in performers) // n
     avg_saves = sum(p["saves"] for p in performers) // n
-    avg_likes = sum(p["likes"] for p in performers) // n
-
     top5 = performers[:5]
-    winning_hooks = [p["hook"] for p in top5 if p["hook"]]
 
     lines = [
-        f"**{n} Reels TTR publiés avec stats IG :**",
-        f"Moyenne : {avg_views:,} vues · {avg_saves:,} saves · {avg_likes:,} likes",
+        f"**{n} Reels TTR avec stats IG :**",
+        f"Moyenne : {avg_views:,} vues · {avg_saves:,} saves",
         "",
-        "**Top performers (par vues) :**",
+        "**Top performers :**",
     ]
     for i, p in enumerate(top5, 1):
-        line = f"{i}. {p['title']} — {p['views']:,} vues · {p['saves']:,} saves · {p['likes']:,} likes"
+        line = f"{i}. {p['title']} — {p['views']:,} vues · {p['saves']:,} saves"
         if p["hook"]:
             line += f"\n   Hook : « {p['hook']} »"
         lines.append(line)
 
-    if winning_hooks:
-        lines += [
-            "",
-            "**Hooks des posts les plus vus :**",
-            *[f"- « {h} »" for h in winning_hooks],
-        ]
-
     lines += [
         "",
-        "**À appliquer au script suivant :**",
-        "Identifie quels types de hooks, sujets et formats génèrent le plus de vues et de saves.",
-        "Applique ces patterns gagnants. Privilégie les hooks courts et percutants,",
-        "les sujets douleur/reprise/prévention qui dominent ce classement.",
+        "**À appliquer :** identifie et applique les patterns gagnants (hooks courts, sujets douleur/reprise).",
     ]
 
-    log_success(f"Patterns de performance chargés ({n} posts synchro)")
+    log_success(f"Patterns Notion chargés ({n} posts)")
     return "\n".join(lines)
 
 
