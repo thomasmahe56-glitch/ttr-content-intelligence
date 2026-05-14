@@ -10,18 +10,14 @@ from typing import Optional
 import anthropic
 from notion_client import Client
 
-from config import (
-    ANTHROPIC_API_KEY,
-    APIFY_API_KEY,
-    NOTION_API_KEY,
-    NOTION_DATABASE_ID,
-    NOTION_FORMATION_PAGE_ID,
-)
+from config import ANTHROPIC_API_KEY, APIFY_API_KEY, NOTION_API_KEY
 from phase1_scraping.apify_scraper import scrape_account_reels
 from utils.logger import log_error, log_info, log_success
 
 TTR_ACCOUNT = "traintorehab"
 PERF_DB_TITLE = "📊 Performance TTR"
+# Page parent : même espace que "Contenu TTR — Analyse Reels"
+_PARENT_PAGE_ID = "35482752414680e286eaf0a609aa22fc"
 
 _DIR = os.path.dirname(__file__)
 _PATTERNS_FILE = os.path.abspath(os.path.join(_DIR, "..", "performance_patterns.json"))
@@ -69,15 +65,7 @@ def _save_cached_db_id(db_id: str) -> None:
 
 
 def _get_parent_page_id() -> str:
-    """Return a parent page ID for creating the performance DB."""
-    try:
-        db = _notion.databases.retrieve(database_id=NOTION_DATABASE_ID)
-        parent = db.get("parent", {})
-        if parent.get("type") == "page_id":
-            return parent["page_id"]
-    except Exception as e:
-        log_error(f"Parent page lookup : {e}")
-    return NOTION_FORMATION_PAGE_ID
+    return _PARENT_PAGE_ID
 
 
 def _find_or_create_performance_db() -> str:
