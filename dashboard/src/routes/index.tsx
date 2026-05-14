@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
   Download, Brain, Database, Check, Loader2, ExternalLink,
-  RotateCcw, Sparkles, Users, Eye, Calendar, MessageCircle, Heart, RefreshCw,
+  RotateCcw, Sparkles, Users, Eye, Calendar, MessageCircle, Heart,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -98,7 +98,6 @@ function Index() {
   const [d100Results, setD100Results] = useState<D100Result[]>([]);
   const [d100Analyzing, setD100Analyzing] = useState(false);
   const [d100Tab, setD100Tab] = useState<D100Tab>("views");
-  const [syncing, setSyncing] = useState(false);
   const [syncingMyStats, setSyncingMyStats] = useState(false);
   const [myStatsResult, setMyStatsResult] = useState<{
     updated: number; skipped: number; apify_reels: number; pattern_insight: string;
@@ -277,23 +276,6 @@ function Index() {
     }
   };
 
-  const handleSyncStats = async () => {
-    setSyncing(true);
-    try {
-      const res = await fetch("http://localhost:8000/sync-stats", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      const { updated, skipped, ig_posts } = data;
-      toast.success(
-        `Sync Graph API — ${ig_posts} posts IG · ${updated} mis à jour · ${skipped} sans match`,
-      );
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erreur lors de la synchronisation");
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   const handleSyncMyStats = async () => {
     setSyncingMyStats(true);
     setMyStatsResult(null);
@@ -365,18 +347,6 @@ function Index() {
               {syncingMyStats ? "Sync…" : "🔄 Sync mes stats"}
             </Button>
 
-            <Button
-              variant="outline"
-              onClick={handleSyncStats}
-              disabled={syncing}
-              title="Synchronise les stats Instagram Graph API → Notion"
-              className="h-9 px-3 gap-2 text-xs border-border bg-transparent hover:bg-secondary"
-            >
-              {syncing
-                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                : <RefreshCw className="h-3.5 w-3.5" />}
-              {syncing ? "Sync…" : "Sync Stats IG"}
-            </Button>
           </div>
 
           {myStatsResult && (
