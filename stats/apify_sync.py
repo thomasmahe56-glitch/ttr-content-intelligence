@@ -508,7 +508,7 @@ async def sync_ttr_stats_via_apify() -> dict:
 
     # 1. Scrape
     log_info(f"Scraping @{TTR_ACCOUNT} via Apify (top 50)...")
-    reels = await scrape_account_reels(TTR_ACCOUNT, APIFY_API_KEY, top=50)
+    reels = await scrape_account_reels(TTR_ACCOUNT, APIFY_API_KEY, top=10)
     log_info(f"{len(reels)} Reels TTR récupérés")
 
     # 2. Create missing Notion pages
