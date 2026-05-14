@@ -1,0 +1,23 @@
+# Secrets
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Downloads & médias
+downloads/
+*.mp4
+
+# Sessions
+session.json
+
+# Node / Dashboard
+dashboard/node_modules/
+dashboard/.wrangler/
+dashboard/dist/
+
+# macOS
+.DS_Store
