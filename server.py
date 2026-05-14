@@ -143,6 +143,19 @@ async def dream100_fetch(request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@app.post("/sync-my-stats")
+async def sync_my_stats():
+    try:
+        from config import APIFY_API_KEY
+        if not APIFY_API_KEY:
+            return JSONResponse({"error": "APIFY_API_KEY non configurée."}, status_code=500)
+        from stats.apify_sync import sync_ttr_stats_via_apify
+        result = await sync_ttr_stats_via_apify()
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.post("/sync-stats")
 async def sync_stats():
     try:

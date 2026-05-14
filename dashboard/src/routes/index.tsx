@@ -99,6 +99,10 @@ function Index() {
   const [d100Analyzing, setD100Analyzing] = useState(false);
   const [d100Tab, setD100Tab] = useState<D100Tab>("views");
   const [syncing, setSyncing] = useState(false);
+  const [syncingMyStats, setSyncingMyStats] = useState(false);
+  const [myStatsResult, setMyStatsResult] = useState<{
+    updated: number; skipped: number; apify_reels: number; pattern_insight: string;
+  } | null>(null);
   const d100EsRef = useRef<EventSource | null>(null);
 
   const reelsByViews = [...d100Reels].sort((a, b) => b.views - a.views);
@@ -281,12 +285,28 @@ function Index() {
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       const { updated, skipped, ig_posts } = data;
       toast.success(
-        `Sync terminée — ${ig_posts} posts IG · ${updated} mis à jour · ${skipped} sans match`,
+        `Sync Graph API — ${ig_posts} posts IG · ${updated} mis à jour · ${skipped} sans match`,
       );
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erreur lors de la synchronisation");
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleSyncMyStats = async () => {
+    setSyncingMyStats(true);
+    setMyStatsResult(null);
+    try {
+      const res = await fetch("http://localhost:8000/sync-my-stats", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setMyStatsResult(data);
+      toast.success(`${data.updated} posts synchronisés via Apify`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erreur sync Apify @traintorehab");
+    } finally {
+      setSyncingMyStats(false);
     }
   };
 
@@ -334,17 +354,48 @@ function Index() {
 
             <Button
               variant="outline"
+              onClick={handleSyncMyStats}
+              disabled={syncingMyStats}
+              title="Synchronise les stats de tes Reels @traintorehab via Apify"
+              className="h-9 px-3 gap-2 text-xs border-border bg-transparent hover:bg-secondary"
+            >
+              {syncingMyStats
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <RotateCcw className="h-3.5 w-3.5" />}
+              {syncingMyStats ? "Sync…" : "🔄 Sync mes stats"}
+            </Button>
+
+            <Button
+              variant="outline"
               onClick={handleSyncStats}
               disabled={syncing}
-              title="Synchronise les stats Instagram → Notion"
+              title="Synchronise les stats Instagram Graph API → Notion"
               className="h-9 px-3 gap-2 text-xs border-border bg-transparent hover:bg-secondary"
             >
               {syncing
                 ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 : <RefreshCw className="h-3.5 w-3.5" />}
-              {syncing ? "Sync…" : "Sync Stats"}
+              {syncing ? "Sync…" : "Sync Stats IG"}
             </Button>
           </div>
+
+          {myStatsResult && (
+            <div className="rounded-xl border border-border bg-card px-4 py-3 text-sm animate-fade-in">
+              <span className="text-muted-foreground">
+                {myStatsResult.updated} post{myStatsResult.updated > 1 ? "s" : ""} synchronisé{myStatsResult.updated > 1 ? "s" : ""}
+                {" · "}{myStatsResult.skipped} sans match
+                {myStatsResult.apify_reels > 0 && ` · ${myStatsResult.apify_reels} Reels Apify`}
+              </span>
+              {myStatsResult.pattern_insight && (
+                <>
+                  <br />
+                  <span className="font-medium text-foreground">
+                    Pattern gagnant : {myStatsResult.pattern_insight}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
         </header>
 
         {/* ═══ MODE : Single Reel ═══════════════════════════════════════════ */}

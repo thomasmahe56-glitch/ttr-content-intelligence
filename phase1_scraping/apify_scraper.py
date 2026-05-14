@@ -85,13 +85,15 @@ async def scrape_account_reels(account: str, api_key: str, top: int = 20) -> lis
         if not is_video:
             continue
         caption_raw = item.get("caption") or item.get("text") or ""
+        raw_ts = item.get("timestamp") or ""
         reels.append({
             "url": _normalize_url(item),
             "thumbnail": item.get("displayUrl") or item.get("thumbnailUrl") or "",
             "views": item.get("videoViewCount") or item.get("videoPlayCount") or 0,
             "comments": item.get("commentsCount") or item.get("videoCommentCount") or 0,
             "likes": item.get("likesCount") or 0,
-            "date": _fmt_date(item.get("timestamp")),
+            "date": _fmt_date(raw_ts),
+            "timestamp_raw": raw_ts[:10],
             "caption": caption_raw[:300],
             "account": item.get("ownerUsername") or account,
         })

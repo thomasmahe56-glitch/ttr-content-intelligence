@@ -100,9 +100,9 @@ def adapt_to_ttr(gemini_analysis: dict, account: str) -> dict:
     if patterns:
         performance_section = (
             "## Feedback loop — Performances réelles de tes Reels TTR\n\n"
+            "Voici les performances de mes posts TTR publiés :\n\n"
             + patterns
-            + "\n\nAide-toi de ces données pour choisir un angle susceptible de dépasser "
-            "ces performances. Les hooks courts et les sujets douleur/reprise sont souvent les plus efficaces.\n\n---\n\n"
+            + "\n\n---\n\n"
         )
     else:
         performance_section = ""

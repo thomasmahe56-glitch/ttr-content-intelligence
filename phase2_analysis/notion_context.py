@@ -157,12 +157,20 @@ def fetch_performance_patterns() -> str:
         props = page.get("properties", {})
         views = (props.get("Vues IG") or {}).get("number") or 0
         saves = (props.get("Saves IG") or {}).get("number") or 0
-        reach = (props.get("Reach IG") or {}).get("number") or 0
+        likes = (props.get("Likes IG") or {}).get("number") or 0
+        comments = (props.get("Commentaires IG") or {}).get("number") or 0
         title = _title_of(page)
         hook_rts = (props.get("Hook analysé") or {}).get("rich_text", [])
-        hook = "".join(rt.get("plain_text", "") for rt in hook_rts)[:80]
+        hook = "".join(rt.get("plain_text", "") for rt in hook_rts)[:100]
         if views > 0:
-            performers.append({"title": title, "views": views, "saves": saves, "reach": reach, "hook": hook})
+            performers.append({
+                "title": title,
+                "views": views,
+                "saves": saves,
+                "likes": likes,
+                "comments": comments,
+                "hook": hook,
+            })
 
     if not performers:
         return ""
@@ -170,18 +178,37 @@ def fetch_performance_patterns() -> str:
     n = len(performers)
     avg_views = sum(p["views"] for p in performers) // n
     avg_saves = sum(p["saves"] for p in performers) // n
+    avg_likes = sum(p["likes"] for p in performers) // n
+
+    top5 = performers[:5]
+    winning_hooks = [p["hook"] for p in top5 if p["hook"]]
 
     lines = [
         f"**{n} Reels TTR publiés avec stats IG :**",
-        f"Moyenne : {avg_views:,} vues · {avg_saves:,} saves",
+        f"Moyenne : {avg_views:,} vues · {avg_saves:,} saves · {avg_likes:,} likes",
         "",
         "**Top performers (par vues) :**",
     ]
-    for i, p in enumerate(performers[:5], 1):
-        line = f"{i}. {p['title']} — {p['views']:,} vues · {p['saves']:,} saves"
+    for i, p in enumerate(top5, 1):
+        line = f"{i}. {p['title']} — {p['views']:,} vues · {p['saves']:,} saves · {p['likes']:,} likes"
         if p["hook"]:
             line += f"\n   Hook : « {p['hook']} »"
         lines.append(line)
+
+    if winning_hooks:
+        lines += [
+            "",
+            "**Hooks des posts les plus vus :**",
+            *[f"- « {h} »" for h in winning_hooks],
+        ]
+
+    lines += [
+        "",
+        "**À appliquer au script suivant :**",
+        "Identifie quels types de hooks, sujets et formats génèrent le plus de vues et de saves.",
+        "Applique ces patterns gagnants. Privilégie les hooks courts et percutants,",
+        "les sujets douleur/reprise/prévention qui dominent ce classement.",
+    ]
 
     log_success(f"Patterns de performance chargés ({n} posts synchro)")
     return "\n".join(lines)
