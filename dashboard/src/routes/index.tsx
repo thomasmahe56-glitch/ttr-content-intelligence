@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 import {
   Download, Brain, Database, Check, Loader2, ExternalLink,
   RotateCcw, Sparkles, Users, Eye, Calendar, MessageCircle, Heart,
@@ -135,7 +137,7 @@ function Index() {
     onError: () => void,
   ) => {
     ref.current?.close();
-    const es = new EventSource(`http://localhost:8000/status/${id}`);
+    const es = new EventSource(`${API_URL}/status/${id}`);
     ref.current = es;
 
     es.onmessage = (event) => {
@@ -173,7 +175,7 @@ function Index() {
     resetPipeline();
 
     try {
-      const res = await fetch("http://localhost:8000/analyze", {
+      const res = await fetch(`${API_URL}/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url.trim() }),
@@ -213,7 +215,7 @@ function Index() {
     resetPipeline();
 
     try {
-      const res = await fetch("http://localhost:8000/dream100/fetch", {
+      const res = await fetch(`${API_URL}/dream100/fetch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ account }),
@@ -257,7 +259,7 @@ function Index() {
     resetPipeline();
 
     try {
-      const res = await fetch("http://localhost:8000/analyze", {
+      const res = await fetch(`${API_URL}/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: urls[idx] }),
@@ -283,7 +285,7 @@ function Index() {
     setSyncingMyStats(true);
     setMyStatsResult(null);
     try {
-      const res = await fetch("http://localhost:8000/sync-my-stats", { method: "POST" });
+      const res = await fetch(`${API_URL}/sync-my-stats`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setMyStatsResult(data);
