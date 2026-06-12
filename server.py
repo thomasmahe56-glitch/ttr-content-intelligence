@@ -53,17 +53,23 @@ def _stop_vite():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    _start_vite()
+    if not os.getenv("RAILWAY_ENVIRONMENT"):
+        _start_vite()
     yield
-    _stop_vite()
+    if not os.getenv("RAILWAY_ENVIRONMENT"):
+        _stop_vite()
     jobs.clear()
 
 
 app = FastAPI(lifespan=lifespan)
 
+_cors_origins = ["http://localhost:8080", "http://localhost:5173"]
+if os.getenv("CORS_ALLOWED_ORIGINS"):
+    _cors_origins += [o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS").split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080", "http://localhost:5173"],
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
